@@ -101,36 +101,64 @@ applyFilter(struct Filter *filter, cs1300bmp *input, cs1300bmp *output)
 
   output -> width = input -> width;
   output -> height = input -> height;
+  int plane;
+  int row;
+  int col;
 
+  //accumulators for use of registers and loop unrolling
+  int coloracc;
+  int coloracc2;
+  int coloracc3;
 
-  for(int col = 1; col < (input -> width) - 1; col = col + 1) {
-    for(int row = 1; row < (input -> height) - 1 ; row = row + 1) {
-      for(int plane = 0; plane < 3; plane++) {
+  //variables to limit function calls
+  int divisor = filter -> getDivisor();
+  int filter00 = filter -> get(0,0);
+  int filter10 = filter -> get(1,0);
+  int filter20 = filter -> get(2,0);
+  int filter01 = filter -> get(0,1);
+  int filter11 = filter -> get(1,1);
+  int filter21 = filter -> get(2,1);
+  int filter02 = filter -> get(0,2);
+  int filter12 = filter -> get(1,2);
+  int filter22 = filter -> get(2,2);
 
-	output -> color[plane][row][col] = 0;
+//for loops reordered for memory efficiency
+for(plane = 0; plane < 3; ++plane) {
+       	for(row = 1; row < (input -> height) - 1 ; ++row) {
+	       	for(col = 1; col < (input -> width) - 1; ++col ) {
 
-	for (int j = 0; j < filter -> getSize(); j++) {
-	  for (int i = 0; i < filter -> getSize(); i++) {	
-	    output -> color[plane][row][col]
+	/*output -> color[plane][row][col] = 0;*/
+	coloracc = 0;
+	coloracc2 = 0;
+	coloracc3 = 0;
+
+	   /* output -> color[plane][row][col]
 	      = output -> color[plane][row][col]
 	      + (input -> color[plane][row + i - 1][col + j - 1] 
-		 * filter -> get(i, j) );
-	  }
-	}
+		 * filter -> get(i, j) );*/
+       coloracc = coloracc + (input -> color[plane][row-1][col-1] * filter00);
+       coloracc2 = coloracc2 + (input -> color[plane][row][col-1] * filter10);
+       coloracc3 = coloracc3 + (input -> color[plane][row+1][col-1] * filter20);
+       coloracc = coloracc + (input -> color[plane][row-1][col] *  filter01);
+       coloracc2 = coloracc2 + (input -> color[plane][row][col] * filter11);
+       coloracc3 = coloracc3 + (input -> color[plane][row+1][col] * filter21);
+       coloracc = coloracc + (input -> color[plane][row-1][col+1] * filter02);
+       coloracc2 = coloracc2 + (input -> color[plane][row][col+1] * filter12);
+       coloracc3 = coloracc3 + (input -> color[plane][row+1][col+1] * filter22);
 	
-	output -> color[plane][row][col] = 	
-	  output -> color[plane][row][col] / filter -> getDivisor();
-
-	if ( output -> color[plane][row][col]  < 0 ) {
+       coloracc = coloracc + coloracc2 + coloracc3;
+       coloracc = coloracc / divisor;
+       output -> color[plane][row][col] = coloracc;
+       if ( /*output -> color[plane][row][col]*/ coloracc < 0 ) {
 	  output -> color[plane][row][col] = 0;
-	}
-
-	if ( output -> color[plane][row][col]  > 255 ) { 
+       }
+       
+       if ( /*output -> color[plane][row][col]*/ coloracc > 255 ) { 
 	  output -> color[plane][row][col] = 255;
-	}
-      }
-    }
-  }
+       }
+     }
+   }
+ }
 
   cycStop = rdtscll();
   double diff = cycStop - cycStart;
